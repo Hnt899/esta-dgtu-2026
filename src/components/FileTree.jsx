@@ -10,7 +10,7 @@ function FileIcon({ name }) {
   const kind = getFileKind(name);
   const cls =
     kind === VIEWERS.PDF ? 'badge-pdf' :
-    kind === VIEWERS.DOCX ? 'badge-doc' :
+    kind === VIEWERS.DOCX || kind === VIEWERS.DOC ? 'badge-doc' :
     kind === VIEWERS.PPTX ? 'badge-ppt' :
     kind === VIEWERS.XLSX ? 'badge-xls' :
     kind === VIEWERS.IMAGE ? 'badge-img' :
