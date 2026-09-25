@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { loadFileBuffer } from '../utils/materials';
 import { getFileKind, getMime, VIEWERS } from '../utils/fileTypes';
 import DownloadButton from './DownloadButton.jsx';
+import { convertDocLight, convertDocFull } from '../utils/docConverter';
 import PptxWorker from '../workers/pptxWorker.js?worker&inline';
 
 /** Хук: загрузить файл и вернуть object-URL (с освобождением памяти). */
@@ -282,6 +283,131 @@ function MediaView({ node, kind }) {
   );
 }
 
+/* ---------------- Старый бинарный DOC (Word 97–2003) — гибридный режим ----------------
+   1. Мгновенно показываем текст, извлечённый лёгким парсером OLE2 (без донагрузок).
+   2. Кнопка «Полное форматирование» лениво подтягивает LibreOffice WASM (~50 МБ, только по клику)
+      и заменяет текст на HTML с сохранением форматирования.
+   3. Если лёгкий разбор провалился — сразу пробуем WASM; при его недоступности — fallback со скачиванием. */
+function DocView({ node }) {
+  const [mode, setMode] = useState('light');        // 'light' | 'full'
+  const [html, setHtml] = useState('');             // результат лёгкого режима (текст -> <p>)
+  const [fullHtml, setFullHtml] = useState('');     // результат LibreOffice-режима
+  const [status, setStatus] = useState('loading');  // loading | ready | error
+  const [progress, setProgress] = useState(null);   // { pct, text } для тяжёлого пути
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus('loading'); setError(''); setHtml(''); setFullHtml(''); setMode('light'); setProgress(null);
+    (async () => {
+      try {
+        const res = await convertDocLight(node);
+        if (cancelled) return;
+        if (res.ok) { setHtml(res.html); setStatus('ready'); }
+        else {
+          // Лёгкий парсер не смог — пробуем сразу тяжёлый путь (WASM), как просил пользователь
+          await runFull();
+        }
+      } catch (e) {
+        if (!cancelled) { setError(String(e.message || e)); setStatus('error'); }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node]);
+
+  /** Запуск/переключение на полное форматирование через LibreOffice WASM. */
+  async function runFull() {
+    setStatus('loading'); setError('');
+    setProgress({ pct: 0, text: 'Загрузка LibreOffice…' });
+    try {
+      const out = await convertDocFull(node, (pct, text) => setProgress({ pct, text: text || '' }));
+      setFullHtml(out);
+      setMode('full');
+      setStatus('ready');
+      setProgress(null);
+    } catch (e) {
+      setProgress(null);
+      setError(String(e.message || e));
+      setStatus('error');
+    }
+  }
+
+  // Fallback: конвертация не удалась ни лёгким, ни тяжёлым путём
+  if (status === 'error' && !html) {
+    return (
+      <div className="viewer">
+        <ErrorBox text={`Не удалось открыть .doc в браузере (${error}). Скачайте файл и откройте в Word.`} node={node} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="viewer">
+      {/* Панель режима doc */}
+      <div className="doc-mode-bar">
+        <span className="muted doc-mode-note">
+          {mode === 'light'
+            ? 'Режим чтения: извлечённый текст без форматирования.'
+            : 'Полный вид: конвертировано LibreOffice (WebAssembly).'}
+        </span>
+        {mode === 'light' && (
+          <button className="btn btn-small" onClick={runFull} disabled={status === 'loading' && !!html}>
+            ✨ Полное форматирование (загрузить ~50 МБ)
+          </button>
+        )}
+        {mode === 'full' && html && (
+          <button className="btn btn-small" onClick={() => setMode('light')}>← Текст</button>
+        )}
+      </div>
+
+      {/* Прогресс тяжёлого пути */}
+      {status === 'loading' && progress && (
+        <div className="zip-progress doc-progress" role="status">
+          <div className="zip-progress-bar" style={{ width: `${Math.min(100, Math.round(progress.pct))}%` }} />
+          <span className="zip-progress-text">Конвертация .doc… {Math.round(progress.pct)}% {progress.text}</span>
+        </div>
+      )}
+
+      {/* Первый загрузка без какого-либо результата */}
+      {status === 'loading' && !progress && !html && <div className="loading">Чтение документа…</div>}
+
+      {/* Ошибка тяжёлого пути показываем тостом над контентом (лёгкий текст остаётся доступен) */}
+      {status === 'error' && html && mode === 'light' && (
+        <p className="doc-error-note">⚠️ Не удалось получить полное форматирование: {error}</p>
+      )}
+
+      {/* Сам документ */}
+      {mode === 'light' && html && (
+        <article className="docx-doc doc-light" dangerouslySetInnerHTML={{ __html: html }} />
+      )}
+      {mode === 'full' && fullHtml && (
+        <article className="docx-doc doc-full" dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(fullHtml) }} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Санитизация HTML от LibreOffice: вырезаем потенциально опасные конструкции
+ * (script/iframe/object/embed, обработчики on*, javascript:-ссылки).
+ * needed потому, что вывод воркера вставляется через dangerouslySetInnerHTML.
+ */
+function sanitizeDocHtml(dirty) {
+  const doc = new DOMParser().parseFromString(dirty, 'text/html');
+  doc.querySelectorAll('script,iframe,object,embed,form,link,meta,base').forEach((n) => n.remove());
+  doc.querySelectorAll('*').forEach((el) => {
+    for (const attr of [...el.attributes]) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+      if (name.startsWith('on')) el.removeAttribute(attr.name);
+      else if ((name === 'href' || name === 'src') && value.startsWith('javascript:')) el.removeAttribute(attr.name);
+    }
+  });
+  // Если LibreOffice вернул полный документ — берём только содержимое <body>
+  return doc.body ? doc.body.innerHTML : dirty;
+}
+
 /* ---------------- Ошибки / неподдерживаемые форматы ---------------- */
 function ErrorBox({ text, node }) {
   return (
@@ -325,6 +451,7 @@ export default function FileViewer({ node, breadcrumbs, onCrumb }) {
   switch (kind) {
     case VIEWERS.PDF:   content = <PdfView key={node.path} node={node} />; break;
     case VIEWERS.DOCX:  content = <DocxView key={node.path} node={node} />; break;
+    case VIEWERS.DOC:   content = <DocView key={node.path} node={node} />; break;
     case VIEWERS.PPTX:  content = <PptxView key={node.path} node={node} />; break;
     case VIEWERS.XLSX:  content = <XlsxView key={node.path} node={node} />; break;
     case VIEWERS.IMAGE: content = <ImageView key={node.path} node={node} />; break;

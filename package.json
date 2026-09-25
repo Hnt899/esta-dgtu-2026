@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@bentopdf/libreoffice-wasm": "^2.3.1",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
     "mammoth": "^1.8.0",

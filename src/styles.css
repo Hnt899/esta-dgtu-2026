@@ -229,3 +229,12 @@ body {
   .tree-size { display: none; }
   .btn-zip { font-size: 10px; padding: 2px 5px; }
 }
+
+/* ---------- Гибридный просмотр старых .doc ---------- */
+.doc-mode-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; max-width: 900px; margin: 0 auto 12px; }
+.doc-mode-note { font-size: 13px; }
+.doc-progress { max-width: 900px; margin: 0 auto 12px; }
+.doc-error-note { max-width: 900px; margin: 0 auto 12px; color: #b3541e; background: rgba(179, 84, 30, 0.08); border-radius: 8px; padding: 8px 12px; }
+[data-theme="dark"] .doc-error-note { color: #f0a35e; }
+.doc-light p { margin: 0 0 1em; white-space: pre-wrap; }
+.doc-full img { max-width: 100%; height: auto; }

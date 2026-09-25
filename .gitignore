@@ -1,11 +1,9 @@
+# Dependencies
 node_modules/
+
+# Build artifacts and caches
 dist/
 build/
-.vercel/
-.env
-materials/архивы/
-Thumbs.db
-.DS_Store
-*.local
-materials/архивы/
-Thumbs.db
+
+# Logs
+*.log
