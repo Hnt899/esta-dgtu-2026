@@ -4,6 +4,7 @@
 export const VIEWERS = {
   PDF: 'pdf',
   DOCX: 'docx',
+  DOC: 'doc', // старый бинарный Word 97–2003 — гибридный просмотр (см. docConverter.js)
   PPTX: 'pptx',
   XLSX: 'xlsx',
   IMAGE: 'image',
@@ -16,7 +17,7 @@ export const VIEWERS = {
 const EXT_MAP = {
   pdf: VIEWERS.PDF,
   docx: VIEWERS.DOCX,
-  doc: VIEWERS.NONE,      // старый бинарный .doc браузером не читается
+  doc: VIEWERS.DOC,      // Word 97–2003 — гибридный просмотр (лёгкий парсер + ленивый LibreOffice WASM)
   pptx: VIEWERS.PPTX,
   ppt: VIEWERS.NONE,
   xlsx: VIEWERS.XLSX,
