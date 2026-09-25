@@ -19,13 +19,14 @@ const loaders = import.meta.glob([
 });
 
 // Метаданные (размер) тех же файлов — берём из manifest Vite без скачивания самих файлов.
+// Важно: ?url возвращает объект модуля { file, src, size }, поэтому import: '*' + eager.
 const meta = import.meta.glob([
   '/materials/**/*',
   '!/materials/архивы/**',
   '!/materials/**/*.zip',
 ], {
-  query: '?url&import',
-  import: 'default',
+  query: '?url',
+  import: '*',
   eager: true,
 });
 
@@ -38,8 +39,8 @@ const sizeMap = {};
 for (const key of Object.keys(loaders)) {
   if (EXCLUDED.test(key) || SKIP_EXT.test(key)) continue;
   cleanLoaders[key] = loaders[key];
-  const m = meta[key]; // { file, src, size }
-  if (m && typeof m === 'object') sizeMap[key] = m.size;
+  const m = meta[key]; // eager-модуль: { file, src, size }
+  if (m && typeof m === 'object' && typeof m.size === 'number') sizeMap[key] = m.size;
 }
 
 /**
