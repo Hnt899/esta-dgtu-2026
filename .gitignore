@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+.vercel/
+.env
+materials/архивы/
+Thumbs.db
+.DS_Store
+*.local
